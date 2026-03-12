@@ -150,9 +150,9 @@ async def my_appointments(message: Message):
 
 # ─── ОТМЕНА ЗАПИСИ КЛИЕНТОМ ────────────────────────────────
 
-@router.callback_query(F.data.startswith("client_cancel_"))
+@router.callback_query(F.data.startswith("client_cancel_") & ~F.data.startswith("client_cancel_confirm_"))
 async def client_cancel_confirm(callback: CallbackQuery):
-    app_id = int(callback.data.split("_")[2])
+    app_id = int(callback.data.split("_")[-1])
     app = await db.get_appointment_by_id(app_id)
     if not app or app[7] == "cancelled":
         await callback.answer("Запись не найдена или уже отменена.", show_alert=True)
@@ -174,7 +174,7 @@ async def client_cancel_confirm(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("client_cancel_confirm_"))
 async def client_cancel_do(callback: CallbackQuery, bot: Bot):
-    app_id = int(callback.data.split("_")[3])
+    app_id = int(callback.data.split("_")[-1])
     app = await db.get_appointment_by_id(app_id)
 
     await db.cancel_appointment(app_id, reason="Отменено клиентом")
@@ -293,11 +293,13 @@ async def choose_date(callback: CallbackQuery, state: FSMContext):
     current_min = WORK_START_HOUR * 60
     end_min = WORK_END_HOUR * 60
 
-    # Если сегодня — минимальное время = сейчас + 30 минут
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    # Если сегодня — минимальное время = сейчас + 30 минут (МСК = UTC+3)
+    from datetime import timezone, timedelta as td
+    msk = timezone(td(hours=3))
+    now_msk = datetime.now(msk)
+    today_str = now_msk.strftime("%Y-%m-%d")
     if date_str == today_str:
-        now = datetime.now()
-        min_min = now.hour * 60 + now.minute + 30
+        min_min = now_msk.hour * 60 + now_msk.minute + 30
     else:
         min_min = 0
 
