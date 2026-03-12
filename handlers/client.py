@@ -293,7 +293,19 @@ async def choose_date(callback: CallbackQuery, state: FSMContext):
     current_min = WORK_START_HOUR * 60
     end_min = WORK_END_HOUR * 60
 
+    # Если сегодня — минимальное время = сейчас + 30 минут
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    if date_str == today_str:
+        now = datetime.now()
+        min_min = now.hour * 60 + now.minute + 30
+    else:
+        min_min = 0
+
     while current_min + service_duration <= end_min:
+        # Пропускаем прошедшие слоты если это сегодня
+        if current_min < min_min:
+            current_min += 30
+            continue
         # Проверяем что весь диапазон свободен
         slot_range = set(range(current_min, current_min + service_duration))
         if not slot_range.intersection(busy_minutes):
