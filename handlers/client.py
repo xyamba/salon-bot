@@ -204,7 +204,15 @@ async def back_to_menu(callback: CallbackQuery):
     await callback.answer()
 
 
-# ─── ШАГ 1: ВЫБОР УСЛУГИ ───────────────────────────────────
+SERVICE_CATEGORIES = {
+    "🤨 Косметология": [1, 2, 3],
+    "✂️ Парикмахерские": [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+    "💅 Ногтевой сервис": [20, 21, 22, 23, 24, 25, 26, 27],
+    "💆 Услуги салона": [28, 29, 30, 31],
+}
+
+
+# ─── ШАГ 1: ВЫБОР КАТЕГОРИИ ────────────────────────────────
 
 @router.message(F.text == "📅 Записаться")
 async def start_booking(message: Message, state: FSMContext):
@@ -214,23 +222,49 @@ async def start_booking(message: Message, state: FSMContext):
         return
 
     await state.clear()
-    services = await db.get_services()
-    if not services:
-        await message.answer("Услуги временно недоступны. Позвоните нам: " + SALON_PHONE)
-        return
-
     builder = InlineKeyboardBuilder()
-    for svc in services:
-        svc_id, name, duration, price, _ = svc
-        builder.button(
-            text=f"{name} — {price}₽ ({duration} мин)",
-            callback_data=f"svc_{svc_id}"
-        )
+    for category in SERVICE_CATEGORIES:
+        builder.button(text=category, callback_data=f"cat_{category}")
     builder.button(text="❌ Отмена", callback_data="cancel_booking")
     builder.adjust(1)
 
-    await message.answer("💇 <b>Выберите услугу:</b>", reply_markup=builder.as_markup(), parse_mode="HTML")
+    await message.answer("💇 <b>Выберите категорию:</b>", reply_markup=builder.as_markup(), parse_mode="HTML")
     await state.set_state(BookingStates.choosing_service)
+
+
+@router.callback_query(BookingStates.choosing_service, F.data.startswith("cat_"))
+async def choose_category(callback: CallbackQuery, state: FSMContext):
+    category = callback.data[4:]
+    service_ids = SERVICE_CATEGORIES.get(category, [])
+    services = await db.get_services()
+
+    builder = InlineKeyboardBuilder()
+    for svc in services:
+        if svc[0] in service_ids:
+            builder.button(
+                text=f"{svc[1]} — {svc[3]}₽",
+                callback_data=f"svc_{svc[0]}"
+            )
+    builder.button(text="⬅️ Назад", callback_data="back_to_categories")
+    builder.button(text="❌ Отмена", callback_data="cancel_booking")
+    builder.adjust(1)
+
+    await callback.message.edit_text(
+        f"{category}\n\n<b>Выберите услугу:</b>",
+        reply_markup=builder.as_markup(), parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.callback_query(BookingStates.choosing_service, F.data == "back_to_categories")
+async def back_to_categories(callback: CallbackQuery, state: FSMContext):
+    builder = InlineKeyboardBuilder()
+    for category in SERVICE_CATEGORIES:
+        builder.button(text=category, callback_data=f"cat_{category}")
+    builder.button(text="❌ Отмена", callback_data="cancel_booking")
+    builder.adjust(1)
+    await callback.message.edit_text("💇 <b>Выберите категорию:</b>", reply_markup=builder.as_markup(), parse_mode="HTML")
+    await callback.answer()
 
 
 @router.callback_query(BookingStates.choosing_service, F.data.startswith("svc_"))
