@@ -12,14 +12,14 @@ ADMIN_IDS = [1970511124]  # Замените на ваш ID
 SALON_NAME = "Ваш Салон"
 
 # Адрес салона
-SALON_ADDRESS = "ул. Примерная, д. 1"
+SALON_ADDRESS = "ул. Херсонская , д. 18, 1 этаж"
 
 # Телефон салона
-SALON_PHONE = "+7 (999) 000-00-00"
+SALON_PHONE = "+7 (985) 912-77-71"
 
 # Рабочие часы (для записи)
-WORK_START_HOUR = 9   # С 9:00
-WORK_END_HOUR = 20    # До 20:00
+WORK_START_HOUR = 10   # С 9:00
+WORK_END_HOUR = 21    # До 20:00
 
 # Шаг времени записи (в минутах)
 TIME_SLOT_MINUTES = 30
