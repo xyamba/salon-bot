@@ -49,8 +49,8 @@ async def cmd_start(message: Message, state: FSMContext):
     already_registered = await db.is_registered(message.from_user.id)
     if already_registered:
         client = await db.get_client(message.from_user.id)
-        first = client[3] or ""
-        last = client[4] or ""
+        first = client["first_name"] or ""
+        last = client["last_name"] or ""
         await message.answer(
             f"👋 С возвращением, <b>{first} {last}</b>!\n\nВыберите действие:",
             reply_markup=MAIN_KB, parse_mode="HTML"
@@ -139,7 +139,11 @@ async def my_appointments(message: Message):
     builder = InlineKeyboardBuilder()
     text = "📋 <b>Ваши записи:</b>\n\n"
     for app in appointments:
-        app_id, service, date, time, status = app
+        app_id = app["id"]
+        service = app["name"]
+        date = app["appointment_date"]
+        time = app["appointment_time"]
+        status = app["status"]
         icon = "✅" if status == "confirmed" else "⏳"
         text += f"{icon} <b>{service}</b>\n📅 {date} в {time}\n🆔 #{app_id}\n\n"
         builder.button(text=f"❌ Отменить #{app_id}", callback_data=f"client_cancel_{app_id}")
@@ -154,11 +158,11 @@ async def my_appointments(message: Message):
 async def client_cancel_confirm(callback: CallbackQuery):
     app_id = int(callback.data.split("_")[-1])
     app = await db.get_appointment_by_id(app_id)
-    if not app or app[7] == "cancelled":
+    if not app or app["status"] == "cancelled":
         await callback.answer("Запись не найдена или уже отменена.", show_alert=True)
         return
 
-    date_display = datetime.strptime(app[5], "%Y-%m-%d").strftime("%d.%m.%Y")
+    date_display = datetime.strptime(app["appointment_date"], "%Y-%m-%d").strftime("%d.%m.%Y")
     builder = InlineKeyboardBuilder()
     builder.button(text="✅ Да, отменить", callback_data=f"client_cancel_confirm_{app_id}")
     builder.button(text="◀️ Назад", callback_data="back_to_menu")
@@ -166,7 +170,7 @@ async def client_cancel_confirm(callback: CallbackQuery):
 
     await callback.message.edit_text(
         f"Вы уверены что хотите отменить запись?\n\n"
-        f"💇 {app[4]}\n📅 {date_display} в {app[6]}",
+        f"💇 {app["service_name"]}\n📅 {date_display} в {app["appointment_time"]}",
         reply_markup=builder.as_markup()
     )
     await callback.answer()
@@ -178,10 +182,10 @@ async def client_cancel_do(callback: CallbackQuery, bot: Bot):
     app = await db.get_appointment_by_id(app_id)
 
     await db.cancel_appointment(app_id, reason="Отменено клиентом")
-    date_display = datetime.strptime(app[5], "%Y-%m-%d").strftime("%d.%m.%Y")
+    date_display = datetime.strptime(app["appointment_date"], "%Y-%m-%d").strftime("%d.%m.%Y")
 
     await callback.message.edit_text(
-        f"✅ Запись отменена.\n\n💇 {app[4]}\n📅 {date_display} в {app[6]}"
+        f"✅ Запись отменена.\n\n💇 {app["service_name"]}\n📅 {date_display} в {app["appointment_time"]}"
     )
     await callback.answer()
 
@@ -191,7 +195,7 @@ async def client_cancel_do(callback: CallbackQuery, bot: Bot):
             await bot.send_message(
                 admin_id,
                 f"⚠️ <b>Клиент отменил запись #{app_id}</b>\n\n"
-                f"👤 {app[1]}\n💇 {app[4]}\n📅 {date_display} в {app[6]}",
+                f"👤 {app["name"]}\n💇 {app["service_name"]}\n📅 {date_display} в {app["appointment_time"]}",
                 parse_mode="HTML"
             )
         except Exception:
@@ -240,10 +244,10 @@ async def choose_category(callback: CallbackQuery, state: FSMContext):
 
     builder = InlineKeyboardBuilder()
     for svc in services:
-        if svc[0] in service_ids:
+        if svc["id"] in service_ids:
             builder.button(
-                text=f"{svc[1]} — {svc[3]}₽",
-                callback_data=f"svc_{svc[0]}"
+                text=f"{svc["name"]} — {svc["price"]}₽",
+                callback_data=f"svc_{svc["id"]}"
             )
     builder.button(text="⬅️ Назад", callback_data="back_to_categories")
     builder.button(text="❌ Отмена", callback_data="cancel_booking")
@@ -271,10 +275,10 @@ async def back_to_categories(callback: CallbackQuery, state: FSMContext):
 async def choose_service(callback: CallbackQuery, state: FSMContext):
     service_id = int(callback.data.split("_")[1])
     service = await db.get_service(service_id)
-    await state.update_data(service_id=service_id, service_name=service[1],
-                            service_price=service[3], service_duration=service[2])
+    await state.update_data(service_id=service_id, service_name=service["name"],
+                            service_price=service["price"], service_duration=service["duration_minutes"])
     await callback.answer()
-    await show_date_picker(callback.message, service[1], edit=True)
+    await show_date_picker(callback.message, service["name"], edit=True)
     await state.set_state(BookingStates.choosing_date)
 
 
@@ -312,7 +316,9 @@ async def choose_date(callback: CallbackQuery, state: FSMContext):
 
     # Строим список занятых минут
     busy_minutes = set()
-    for booked_time, duration in booked_slots:
+    for slot in booked_slots:
+        booked_time = slot["appointment_time"]
+        duration = slot["duration_minutes"]
         try:
             h, m = map(int, booked_time.split(":"))
             start_min = h * 60 + m
@@ -394,7 +400,7 @@ async def choose_time(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
     client = await db.get_client(callback.from_user.id)
-    await state.update_data(phone=client[5] or "не указан")
+    await state.update_data(phone=client["phone"] or "не указан")
     await show_confirmation(callback.message, state, edit=True)
     await state.set_state(BookingStates.confirming)
 
@@ -430,16 +436,16 @@ async def confirm_booking(callback: CallbackQuery, state: FSMContext, bot: Bot):
     await callback.answer()
 
     appointment_id = await db.create_appointment(
-        client_id=client[0],
+        client_id=client["id"],
         service_id=data["service_id"],
         date=data["date"],
         time=data["time"]
     )
 
     date_display = datetime.strptime(data["date"], "%Y-%m-%d").strftime("%d.%m.%Y")
-    first = client[3] or ""
-    last = client[4] or ""
-    phone = client[5] or "нет"
+    first = client["first_name"] or ""
+    last = client["last_name"] or ""
+    phone = client["phone"] or "нет"
     await state.clear()
 
     await callback.message.edit_text(

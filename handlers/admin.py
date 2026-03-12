@@ -34,7 +34,7 @@ async def admin_panel(message: Message):
     appointments_count = await db.get_appointments_count()
     stats = await db.get_service_stats()
 
-    top_service = f"{stats[0][0]} ({stats[0][1]} раз)" if stats else "нет данных"
+    top_service = f"{stats[0]["name"]} ({stats[0]["cnt"]} раз)" if stats else "нет данных"
 
     await message.answer(
         f"🔧 <b>Панель администратора</b>\n\n"
@@ -70,11 +70,11 @@ async def all_appointments(message: Message):
     text = "📋 <b>Последние 20 записей:</b>\n\n"
     for app in appointments:
         icons = {"pending": "⏳", "confirmed": "✅", "cancelled": "❌", "done": "🎉"}
-        icon = icons.get(app[7], "⏳")
+        icon = icons.get(app["status"], "⏳")
         text += (
-            f"{icon} <b>#{app[0]}</b> | {app[5]} {app[6]}\n"
-            f"   👤 {app[1].strip()} | 📱 {app[2] or 'нет'}\n"
-            f"   💇 {app[4]}\n\n"
+            f"{icon} <b>#{app["id"]}</b> | {app["appointment_date"]} {app["appointment_time"]}\n"
+            f"   👤 {app["name"].strip()} | 📱 {app["phone"] or 'нет'}\n"
+            f"   💇 {app["service_name"]}\n\n"
         )
     if len(text) > 4000:
         text = text[:4000] + "..."
@@ -98,11 +98,11 @@ async def today_appointments(message: Message):
 
     text = f"📅 <b>Расписание на {today_display}:</b>\n\n"
     for app in appointments:
-        icon = "✅" if app[7] == "confirmed" else "⏳"
+        icon = "✅" if app["status"] == "confirmed" else "⏳"
         text += (
-            f"{icon} <b>{app[6]}</b> — {app[4]}\n"
-            f"   👤 {app[1].strip()} | 📱 {app[2] or 'нет'}\n"
-            f"   🆔 #{app[0]}\n\n"
+            f"{icon} <b>{app["appointment_time"]}</b> — {app["service_name"]}\n"
+            f"   👤 {app["name"].strip()} | 📱 {app["phone"] or 'нет'}\n"
+            f"   🆔 #{app["id"]}\n\n"
         )
     await message.answer(text, parse_mode="HTML")
 
@@ -121,8 +121,8 @@ async def list_clients(message: Message):
 
     text = f"👥 <b>База клиентов ({len(clients)} чел.):</b>\n\n"
     for i, c in enumerate(clients[:30], 1):
-        name = f"{c[3] or ''} {c[4] or ''}".strip() or "Без имени"
-        text += f"{i}. <b>{name}</b>\n   📱 {c[5] or 'нет'} | @{c[2] or 'нет'}\n   📅 С {c[6][:10]}\n\n"
+        name = f"{c["first_name"] or ''} {c["last_name"] or ''}".strip() or "Без имени"
+        text += f"{i}. <b>{name}</b>\n   📱 {c["phone"] or 'нет'} | @{c["username"] or 'нет'}\n   📅 С {c["registered_at"][:10]}\n\n"
 
     if len(clients) > 30:
         text += f"... и ещё {len(clients) - 30}"
@@ -150,8 +150,8 @@ async def search_client(message: Message):
 
     text = f"🔍 <b>Результаты поиска «{query}»:</b>\n\n"
     for c in clients:
-        name = f"{c[3] or ''} {c[4] or ''}".strip() or "Без имени"
-        text += f"👤 <b>{name}</b>\n   📱 {c[5] or 'нет'} | @{c[2] or 'нет'}\n   🆔 TG: {c[1]}\n\n"
+        name = f"{c["first_name"] or ''} {c["last_name"] or ''}".strip() or "Без имени"
+        text += f"👤 <b>{name}</b>\n   📱 {c["phone"] or 'нет'} | @{c["username"] or 'нет'}\n   🆔 TG: {c["telegram_id"]}\n\n"
     await message.answer(text, parse_mode="HTML")
 
 
@@ -170,7 +170,9 @@ async def service_stats(message: Message):
     text = "📊 <b>Статистика по услугам:</b>\n\n"
     total_revenue = 0
     for s in stats:
-        name, count, revenue = s
+        name = s["name"]
+        count = s["cnt"]
+        revenue = s["revenue"]
         revenue = revenue or 0
         total_revenue += revenue
         text += f"💇 <b>{name}</b>\n   Заказов: {count} | Выручка: {revenue}₽\n\n"
@@ -200,13 +202,13 @@ async def confirm_appointment(message: Message, bot: Bot):
     await db.confirm_appointment(app_id)
     await message.answer(f"✅ Запись #{app_id} подтверждена.")
 
-    date_display = datetime.strptime(target[5], "%Y-%m-%d").strftime("%d.%m.%Y")
+    date_display = datetime.strptime(target["appointment_date"], "%Y-%m-%d").strftime("%d.%m.%Y")
     try:
         await bot.send_message(
-            target[3],
+            target["telegram_id"],
             f"✅ <b>Ваша запись подтверждена!</b>\n\n"
-            f"💇 {target[4]}\n"
-            f"📅 {date_display} в {target[6]}\n\n"
+            f"💇 {target["service_name"]}\n"
+            f"📅 {date_display} в {target["appointment_time"]}\n\n"
             f"Ждём вас! 😊",
             parse_mode="HTML"
         )
@@ -232,13 +234,13 @@ async def cancel_appointment_start(message: Message, state: FSMContext):
     if not target:
         await message.answer(f"❌ Запись #{app_id} не найдена.")
         return
-    if target[7] == "cancelled":
+    if target["status"] == "cancelled":
         await message.answer(f"⚠️ Запись #{app_id} уже отменена.")
         return
 
-    date_display = datetime.strptime(target[5], "%Y-%m-%d").strftime("%d.%m.%Y")
-    await state.update_data(cancel_app_id=app_id, cancel_app_tg=target[3],
-                            cancel_service=target[4], cancel_date=date_display, cancel_time=target[6])
+    date_display = datetime.strptime(target["appointment_date"], "%Y-%m-%d").strftime("%d.%m.%Y")
+    await state.update_data(cancel_app_id=app_id, cancel_app_tg=target["telegram_id"],
+                            cancel_service=target["service_name"], cancel_date=date_display, cancel_time=target["appointment_time"])
 
     builder = InlineKeyboardBuilder()
     builder.button(text="Без причины", callback_data="cancel_reason_none")
@@ -246,8 +248,8 @@ async def cancel_appointment_start(message: Message, state: FSMContext):
 
     await message.answer(
         f"📝 Введите <b>причину отмены</b> записи #{app_id}:\n\n"
-        f"👤 {target[1].strip()} | 💇 {target[4]}\n"
-        f"📅 {date_display} в {target[6]}\n\n"
+        f"👤 {target["name"].strip()} | 💇 {target["service_name"]}\n"
+        f"📅 {date_display} в {target["appointment_time"]}\n\n"
         f"Или нажмите кнопку если причина не нужна:",
         reply_markup=builder.as_markup(),
         parse_mode="HTML"
@@ -333,7 +335,7 @@ async def broadcast_photo(message: Message, state: FSMContext, bot: Bot):
     status_msg = await message.answer(f"📤 Отправляем... 0/{len(clients)}")
     for i, client in enumerate(clients):
         try:
-            await bot.send_photo(client[1], photo=photo_id, caption=full_caption, parse_mode="HTML")
+            await bot.send_photo(client["telegram_id"], photo=photo_id, caption=full_caption, parse_mode="HTML")
             sent += 1
         except Exception:
             failed += 1
@@ -364,7 +366,7 @@ async def broadcast_text(message: Message, state: FSMContext, bot: Bot):
     status_msg = await message.answer(f"📤 Отправляем... 0/{len(clients)}")
     for i, client in enumerate(clients):
         try:
-            await bot.send_message(client[1], f"📢 <b>Сообщение от салона</b>\n\n{text}", parse_mode="HTML")
+            await bot.send_message(client["telegram_id"], f"📢 <b>Сообщение от салона</b>\n\n{text}", parse_mode="HTML")
             sent += 1
         except Exception:
             failed += 1
