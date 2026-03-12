@@ -10,12 +10,10 @@ scheduler = AsyncIOScheduler(timezone="Europe/Moscow")
 
 
 async def send_reminders(bot: Bot):
-    """Отправляет напоминания за день до записи"""
+    """Напоминания клиентам за день до записи в 18:00"""
     tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
     tomorrow_display = (datetime.now() + timedelta(days=1)).strftime("%d.%m.%Y")
-
     appointments = await db.get_today_appointments(tomorrow)
-    logger.info(f"Отправка напоминаний для {len(appointments)} записей на {tomorrow_display}")
 
     for app in appointments:
         app_id, name, phone, tg_id, service, date, time, status = app
@@ -24,16 +22,20 @@ async def send_reminders(bot: Bot):
                 tg_id,
                 f"⏰ <b>Напоминание о записи!</b>\n\n"
                 f"Завтра, {tomorrow_display} в <b>{time}</b>\n"
-                f"💇 Услуга: <b>{service}</b>\n\n"
-                f"Ждём вас! 😊",
+                f"💇 {service}\n\nЖдём вас! 😊",
                 parse_mode="HTML"
             )
         except Exception as e:
-            logger.warning(f"Не удалось отправить напоминание клиенту {tg_id}: {e}")
+            logger.warning(f"Не удалось отправить напоминание {tg_id}: {e}")
+
+
+async def auto_cleanup(bot: Bot):
+    """Автоудаление прошедших записей каждую ночь в 03:00"""
+    count = await db.delete_old_appointments()
+    logger.info(f"Автоочистка: удалено {count} прошедших записей")
 
 
 def start_scheduler(bot: Bot):
-    """Запускает планировщик задач"""
     # Напоминания каждый день в 18:00
     scheduler.add_job(
         send_reminders,
@@ -43,5 +45,14 @@ def start_scheduler(bot: Bot):
         replace_existing=True
     )
 
+    # Автоудаление каждую ночь в 03:00
+    scheduler.add_job(
+        auto_cleanup,
+        trigger=CronTrigger(hour=3, minute=0),
+        kwargs={"bot": bot},
+        id="auto_cleanup",
+        replace_existing=True
+    )
+
     scheduler.start()
-    logger.info("Планировщик задач запущен")
+    logger.info("Планировщик запущен")
